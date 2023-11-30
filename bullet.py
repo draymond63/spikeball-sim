@@ -47,26 +47,45 @@ p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
 
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.setGravity(0, 0, -10)
-planeId = p.loadURDF("plane.urdf", [0, 0, 0])
-boxId = p.loadURDF("cube.urdf", [0, 0, 2])
-bunnyId = p.loadSoftBody("net.obj", basePosition=[2, -1, 0], scale=0.001, mass=0.1, useNeoHookean=1, NeoHookeanMu=180, NeoHookeanLambda=600, NeoHookeanDamping=0.01, useSelfCollision=1, frictionCoeff=0.5, collisionMargin=0.001)#.obj")#.vtk")
+# planeId = p.loadURDF("plane.urdf", [0, 0, 0])
+netId = p.loadSoftBody("net.obj", basePosition=[-1, 1, 1], baseOrientation=p.getQuaternionFromEuler([3.14/2, 0, 0]), scale=0.001, mass=0.1, useNeoHookean=True, NeoHookeanMu=1e15, NeoHookeanLambda=1e10, NeoHookeanDamping=0.01, useSelfCollision=1, frictionCoeff=0.5, collisionMargin=0.001)#.obj")#.vtk")
 
-#meshData = p.getMeshData(bunnyId)
-#print("meshData=",meshData)
-#p.loadURDF("cube_small.urdf", [1, 0, 1])
+perimeterNodeIndices = [*range(125)]
+
+for nodeIndex in perimeterNodeIndices:
+    p.createSoftBodyAnchor(netId, nodeIndex, -1, -1)  # Anchor to a fixed point in space
+
+ballRadius = 0.1 # m
+ballMass = 0.150 # kg
+ballCollisionShapeId = p.createCollisionShape(p.GEOM_SPHERE, radius=ballRadius)
+ballVisualShapeId = -1  # Use default visual shape
+ballStartPosition = [0, 0, 2]
+ballStartOrientation = p.getQuaternionFromEuler([0, 0, 0])
+ballId = p.createMultiBody(ballMass, ballCollisionShapeId, ballVisualShapeId, ballStartPosition, ballStartOrientation)
+
+
+debug = True
+if debug:
+  data = p.getMeshData(netId, -1, flags=p.MESH_DATA_SIMULATION_MESH)
+#   print("--------------")
+#   print("data=",data)
+#   print(data[0])
+#   print(data[1])
+  text_uid = []
+  for i in range(data[0]):
+      pos = data[1][i]
+      uid = p.addUserDebugText(str(i), pos, textColorRGB=[1,1,1])
+      text_uid.append(uid)
+
 useRealTimeSimulation = 1
-
 if (useRealTimeSimulation):
   p.setRealTimeSimulation(1)
 
-print("planeId", p.getDynamicsInfo(planeId, -1))
-print("bunnyId", p.getDynamicsInfo(bunnyId, 0))
-print("boxId", p.getDynamicsInfo(boxId, -1))
-p.changeDynamics(boxId,-1,mass=10)
+# print("planeId", p.getDynamicsInfo(planeId, -1))
+# print("netId", p.getDynamicsInfo(netId, 0))
+# print("boxId", p.getDynamicsInfo(ballId, -1))
 while p.isConnected():
-  p.setGravity(0, 0, -10)
   if (useRealTimeSimulation):
-
     sleep(0.01)  # Time in seconds.
     #p.getCameraImage(320,200,renderer=p.ER_BULLET_HARDWARE_OPENGL )
   else:
