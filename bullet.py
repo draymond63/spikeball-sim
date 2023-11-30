@@ -43,14 +43,14 @@ from time import sleep
 import pybullet_data
 
 physicsClient = p.connect(p.GUI)
-p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
+# p.resetSimulation(p.RESET_USE_DEFORMABLE_WORLD)
 
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
-p.setGravity(0, 0, -10)
+p.setGravity(0, 0, -1)
 # planeId = p.loadURDF("plane.urdf", [0, 0, 0])
-netId = p.loadSoftBody("net.obj", basePosition=[-1, 1, 1], baseOrientation=p.getQuaternionFromEuler([3.14/2, 0, 0]), scale=0.001, mass=0.1, useNeoHookean=True, NeoHookeanMu=1e15, NeoHookeanLambda=1e10, NeoHookeanDamping=0.01, useSelfCollision=1, frictionCoeff=0.5, collisionMargin=0.001)#.obj")#.vtk")
+netId = p.loadSoftBody("net.obj", basePosition=[-1, 1, 0], baseOrientation=p.getQuaternionFromEuler([3.14/2, 0, 0]), scale=0.001, mass=0.1, useNeoHookean=True, NeoHookeanMu=10, NeoHookeanLambda=10, NeoHookeanDamping=0.01, useSelfCollision=1, frictionCoeff=0.5, collisionMargin=0.01)#.obj")#.vtk")
 
-perimeterNodeIndices = [*range(125)]
+perimeterNodeIndices = [*range(520)] # 5720 total nodes
 
 for nodeIndex in perimeterNodeIndices:
     p.createSoftBodyAnchor(netId, nodeIndex, -1, -1)  # Anchor to a fixed point in space
@@ -59,12 +59,12 @@ ballRadius = 0.1 # m
 ballMass = 0.150 # kg
 ballCollisionShapeId = p.createCollisionShape(p.GEOM_SPHERE, radius=ballRadius)
 ballVisualShapeId = -1  # Use default visual shape
-ballStartPosition = [0, 0, 2]
+ballStartPosition = [0, 0, 1]
 ballStartOrientation = p.getQuaternionFromEuler([0, 0, 0])
 ballId = p.createMultiBody(ballMass, ballCollisionShapeId, ballVisualShapeId, ballStartPosition, ballStartOrientation)
 
 
-debug = True
+debug = False
 if debug:
   data = p.getMeshData(netId, -1, flags=p.MESH_DATA_SIMULATION_MESH)
 #   print("--------------")
