@@ -6,7 +6,7 @@ NET_RADIUS = 0.4572 # m
 
 
 class SpikeBallSimulator:
-    def __init__(self, max_duration=1, g=1, plot=False) -> None:
+    def __init__(self, max_duration=1, g=1, plot=False, trimetric=False) -> None:
         NET_MODEL = "net.obj"
         NET_EDGE_NODES = 520
         # NET_NODES = 5270
@@ -15,18 +15,20 @@ class SpikeBallSimulator:
         self.plot = plot
         p.connect(p.GUI if plot else p.DIRECT)
         # Camera settings
-        if plot:
+        if plot and not trimetric:
             cameraTargetPosition = [0, 0, 0]  # x, y, z
             cameraDistance = 3
             cameraYaw = np.pi/2
             cameraPitch = 0
             p.resetDebugVisualizerCamera(cameraDistance, cameraYaw, cameraPitch, cameraTargetPosition)
-            p.setGravity(0, 0, -g)
+        p.setGravity(0, 0, -g)
         # Net model
+        self.base_net_position = [-0.5, 0.5, 0]
+        self.base_net_orientation = p.getQuaternionFromEuler([np.pi/2, 0, 0])
         self.net = p.loadSoftBody(
             NET_MODEL,
-            basePosition=[-0.5, 0.5, 0], # Center of the net is not at the origin
-            baseOrientation=p.getQuaternionFromEuler([np.pi/2, 0, 0]),
+            basePosition=self.base_net_position, # Center of the net is not at the origin
+            baseOrientation=self.base_net_orientation,
             scale=0.0005, # Model has a diameter of 1828.8. That is 6ft in mm, but we need to scale to meters
             mass=0.1,
             useNeoHookean=True,
@@ -60,7 +62,8 @@ class SpikeBallSimulator:
         )
 
     def run(self, rim_contact_dist, vx, vy):
-        p.resetBasePositionAndOrientation(self.ball, [-NET_RADIUS + rim_contact_dist + self.radius, 0, self.radius], [0, 0, 0, 1])
+        p.resetBasePositionAndOrientation(self.net, [0, 0, 0], self.base_net_orientation)
+        p.resetBasePositionAndOrientation(self.ball, [-NET_RADIUS + self.radius + rim_contact_dist, 0, self.radius], [0, 0, 0, 1])
         p.resetBaseVelocity(self.ball, linearVelocity=[-vx, 0, -vy], angularVelocity=[0, 0, 0])
 
         ball_positions = []
@@ -90,7 +93,7 @@ class SpikeBallSimulator:
 
 
 if __name__ == "__main__":
-    sim = SpikeBallSimulator(plot=True)
-    for vy in np.linspace(0, 20, 10):
-        ball_coords = sim.run(0.1, 3, vy)
+    sim = SpikeBallSimulator(plot=True, trimetric=False)
+    for v in np.linspace(0, 10, 20):
+        ball_coords = sim.run(0.1, v, v)
         print(ball_coords.shape)
