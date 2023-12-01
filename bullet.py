@@ -14,7 +14,7 @@ NET_EDGE_NODES = 520
 
 
 class SpikeBallSimulator:
-    def __init__(self, *net_params, max_duration=1, g=1, plot=False, trimetric=False, **net_kwargs) -> None:
+    def __init__(self, *net_params, max_duration=1, g=9.81, plot=False, trimetric=False, **net_kwargs) -> None:
         self.TIMESTEP = 240
         self.max_steps = int(max_duration*self.TIMESTEP)
         self.plot = plot
@@ -68,7 +68,7 @@ class SpikeBallSimulator:
 
     def run(self, rim_contact_dist, vx, vy, min_steps=4, let_run=False):
         p.restoreState(self.init_state)
-        contact_height = BALL_RADIUS + self.contact_margin
+        contact_height = BALL_RADIUS
         p.resetBasePositionAndOrientation(self.ball, [NET_RADIUS - rim_contact_dist, 0, contact_height], [0, 0, 0, 1])
         p.resetBaseVelocity(self.ball, linearVelocity=[vx, 0, -vy], angularVelocity=[0, 0, 0])
 
@@ -94,11 +94,9 @@ class SpikeBallSimulator:
             elif np.linalg.norm([x, y]) > NET_RADIUS + BALL_RADIUS and not let_run:
                 break
             elif step_count > self.max_steps:
-                if let_run:
-                    break
                 if not sim_started:
                     raise Exception(f"Ball never hit net with input x={rim_contact_dist}, vx={vx}, vy={vy}")
-                raise Exception(f"Simulation timed out with input x={rim_contact_dist}, vx={vx}, vy={vy}")
+                break
             elif z < -3*BALL_RADIUS and not let_run:
                 raise Exception(f"Ball fell through net with input x={rim_contact_dist}, vx={vx}, vy={vy}")
         return np.array(ball_coords) # (step_count, 3)
@@ -128,12 +126,14 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
 
     pbar = tqdm()
     def objective(x):
+        net_mu, net_lambda = x
         pbar.update()
-        sim = SpikeBallSimulator(net_mu=x[0], net_lambda=x[1], plot=False)
+        pbar.set_description(f"mu={net_mu:.3f}, lambda={net_lambda:.3f}")
+        sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
         try:
             sim_out = np.array([sim.get_output_state(*input_state, raise_on_error=False) for input_state in input_states])
         except Exception as e:
-            raise Exception(f"Error in simulation with mu={x[0]}, lambda={x[1]}") from e
+            raise Exception(f"Error in simulation with mu={net_mu}, lambda={x[1]}") from e
         return sim_error(output_states, sim_out)
 
     init_mu = 1e3
@@ -145,27 +145,41 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     return res.x
 
 
-def optimize_pocket_shot(net_mu: float, net_lambda: float, max_v=4):
+def optimize_pocket_shot(net_mu: float, net_lambda: float, max_v=15, opt_func='max_xdist'):
     # Find the optimal pocket shot, i.e. the shot rebounds at the shallowest angle possible while still clearing the net
     sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
-
     pbar = tqdm()
+
+    def max_xdist(x, vx_out, vy_out):
+        return vx_out # Want it to bounce as fast as possible in the negative x direction
+    
+    def min_angle(x, vx_out, vy_out):
+        rad = np.arctan2(-vy_out, -vx_out)
+        if rad < 0:
+            rad += 2*np.pi
+        return rad
+    
+    func_map = {
+        'max_xdist': max_xdist,
+        'min_angle': min_angle,
+    }
+
     def objective(x):
         rim_dist, vx, vy = x
-        _, vx_out, _ = sim.get_output_state(rim_dist, vx, vy)
-        # print(f"New iteration with rim_dist={rim_dist:.3f}, vx={vx:.3f}, vy={vy:.3f} -> vx_out={vx_out:.3f}")
+        xdist_out, vx_out, vy_out = sim.get_output_state(rim_dist, vx, vy)
         pbar.update()
-        return vx_out # Want it to bounce as fast as possible in the negative x direction
+        pbar.set_description(f"x={rim_dist:.5f}, vx={vx:.5f}, vy={vy:.5f} -> vx_out={vx_out:.3f}, vy_out={vy_out:.3f}")
+        return func_map[opt_func](xdist_out, vx_out, vy_out)
 
     # clear_rim_constr = {
     #     'type': 'ineq',
     #     'fun': lambda x: NET_RADIUS - x[0]
     # }
-    rim_dist_constr = LinearConstraint([1, 0, 0], [2*BALL_RADIUS], [NET_RADIUS], keep_feasible=True)
+    rim_dist_constr = LinearConstraint([1, 0, 0], [2*BALL_RADIUS], [2*NET_RADIUS - 2*BALL_RADIUS], keep_feasible=True)
     vxin_constr = LinearConstraint([0, 1, 0], [0], [max_v], keep_feasible=True) # Shot must be to the right
     vyin_constr = LinearConstraint([0, 0, 1], [0], [max_v], keep_feasible=True) # Shot must be downward
     vin_constr = LinearConstraint([0, 1/np.sqrt(2), 1/np.sqrt(2)], [0], [max_v], keep_feasible=True)
-    res = minimize(objective, [3*BALL_RADIUS, 0.5, 0.5], method='trust-constr', constraints=[rim_dist_constr, vxin_constr, vyin_constr, vin_constr], options={'disp': True})
+    res = minimize(objective, [3*BALL_RADIUS, 3, 3], method='trust-constr', constraints=[rim_dist_constr, vxin_constr, vyin_constr, vin_constr], options={'disp': True})
     pbar.close()
     print(res)
     return res.x
@@ -191,11 +205,20 @@ if __name__ == "__main__":
     # net_mu, net_lambda = optimize_net_sim(input_states, output_states)
     # print(net_mu, net_lambda)
 
-    # sim = SpikeBallSimulator(net_mu=1050, net_lambda=5, plot=False, trimetric=False)
-    # sim.run(0.08923, 4.000, 0.05772, let_run=True)
-    # print(sim.get_output_state(0.08923, 4.000, 0.05772))
+    # xdist optimized
+    # state = [1.334e-01, 3.067e+00, 2.918e+0] # Best 'pocket' at max 5 m/s
+    # state = [1.767e-01, 3.085e+00, 3.131e+00] # Best pocket at max 10 m/s
+    # state = [2.225e-01, 2.824e+00, 1.838e+00] # Best pocket at max 15 m/s
+    # Angle optimized
+    # state = [1.333e-01, 3.000e+00, 3.000e+00]
+    # input_speed = np.linalg.norm(state[1:])
+    # input_angle = np.arctan2(-state[2], -state[1])
+    # print(f"Input speed: {input_speed:.3f} m/s, angle: {input_angle*180/np.pi:.3f} deg")
+    # sim = SpikeBallSimulator(net_mu=1050, net_lambda=5, plot=True, trimetric=False)
+    # sim.run(*state, let_run=True)
+    # print(sim.get_output_state(*state))
     # for state in input_states:
     #     print(state, end=" -> ")
     #     print(sim.get_output_state(*state))
 
-    optimize_pocket_shot(net_mu=1050, net_lambda=5)
+    optimize_pocket_shot(net_mu=1050, net_lambda=5, opt_func='max_xdist')
