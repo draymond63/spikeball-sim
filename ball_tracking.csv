@@ -9,8 +9,6 @@ vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,ty
 -7.51678,9.408445,-1.11933,-7.16593,-20.47,-9.62,-51.24,81.08,high,normal,project_videos\high\Normal\20231116_211403000_iOS.MOV
 11.54362416,13.77993663,-1.40169,-7.04998,13.2,8.39,53.39,79.03,high,pocket,project_videos\high\Pocket\20231116_211211000_iOS.MOV
 7.400854179,9.43042011,-5.95996,-6.07838,6.71,10.63,50.98,46.08,high,pocket,project_videos\high\Pocket\20231116_211230000_iOS.MOV
--7.19501,8.789586012,1.848506803,-8.61372,-1,-8.84,-51.45,-78.73,high,pocket,project_videos\high\Pocket\20231116_211241000_iOS.MOV
-10.21166753,11.23902542,-1.72163,-6.40467,-1,-1,50.24,75.44,high,pocket,project_videos\high\Pocket\20231116_211253000_iOS.MOV
 13.95973154,18.04657975,-1.09638,-5.69819,12.64,11.63,52.27,79.39,high,pocket,project_videos\high\Pocket\20231116_211311000_iOS.MOV
 7.248322148,9.27252,-1.97896,-8.93201,12.86,10.96,51.41,78.74,high,pocket,project_videos\high\Pocket\20231116_211324000_iOS.MOV
 13.69127517,15.96042709,-2.40274,-4.27153,5.26,8.05,51.21,60.62,high,pocket,project_videos\high\Pocket\20231116_211328000_iOS.MOV
@@ -36,7 +34,6 @@ vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,ty
 8.54852083,7.261124893,-1.37438,-7.55521,10.74,7.38,40.28,79.43,medium,pocket,project_videos\medium\Pocket\20231116_210418000_iOS.MOV
 7.746749894,7.463068258,-3.00648,-5.98698,11.07,11.41,44.27,63.54,medium,pocket,project_videos\medium\Pocket\20231116_210429000_iOS.MOV
 9.515652133,8.058524741,-2.49091,-6.54672,9.06,6.71,41.13,69.7,medium,pocket,project_videos\medium\Pocket\20231116_210431000_iOS.MOV
-16.37583893,15.70808611,-2.54341,-5.01659,-1,-1,43.63,63.38,medium,pocket,project_videos\medium\Pocket\20231116_210448000_iOS.MOV
 -7.38415,6.138016325,-0.26197,-8.94339,-16.55,-9.4,-41.34,88.22,medium,vertical,project_videos\medium\Vertical\20231116_210226000_iOS.MOV
 9.532547989,9.828374,-0.11977,3.080886672,13.98,7.83,49.07,-88.38,medium,vertical,project_videos\medium\Vertical\20231116_210233000_iOS.MOV
 6.30571197,7.451814674,-0.10839,3.364075415,14.43,10.07,50.85,-87.79,medium,vertical,project_videos\medium\Vertical\20231116_210253000_iOS.MOV
@@ -51,16 +48,11 @@ vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,ty
 4.792709479,3.628822696,0.7324858651,-4.00063,10.74,6.26,37.8,-79.08,low,normal,project_videos\low\Normal\20231116_210025000_iOS.MOV
 9.478319509,7.086126442,1.0350654,-5.11493,15.88,7.72,38.43,-78.4,low,normal,project_videos\low\Normal\20231116_210032000_iOS.MOV
 -10.3905,7.163093443,-2.62344,-3.35738,-27.29,-10.51,-37.01,52.46,low,normal,project_videos\low\Normal\20231116_210035000_iOS.MOV
--16.9128,10.03296275,-6.90652,-3.32761,-1,-1,-31.67,25.78,low,normal,project_videos\low\Normal\20231116_210045000_iOS.MOV
-7.731036391,4.003083,4.41837915,-3.64015,-1,-1,27.76,-39.07,low,normal,project_videos\low\Normal\20231116_210048000_iOS.MOV
 -8.95706,5.090138,-7.22941,-5.47411,-40.27,-14.65,-29.73,37.47,low,normal,project_videos\low\Normal\20231116_210051000_iOS.MOV
-14.2517096,7.231601749,3.631176243,-3.21306,-1,-1,26.86,-41.75,low,normal,project_videos\low\Normal\20231116_210053000_iOS.MOV
 -15.6992,8.506390882,-3.8672,-3.63943,-32.44,-6.04,-28.09,42.87,low,normal,project_videos\low\Normal\20231116_210056000_iOS.MOV
-16.64650391,8.603171974,2.895473979,-3.7477,-1,-1,27.96,-52.32,low,normal,project_videos\low\Normal\20231116_210059000_iOS.MOV
 -9.98019,5.975575289,-7.88331,-4.92044,-48.43,-21.81,-29.6,31.99,low,normal,project_videos\low\Normal\20231116_210102000_iOS.MOV
 9.136723189,5.051035356,4.661970758,-9.23228,19.69,7.05,29.88,-63.02,low,normal,project_videos\low\Normal\20231116_210105000_iOS.MOV
 -14.7031,9.362178445,-3.28187,-2.78022,-32.33,-10.96,-32.67,39.37,low,normal,project_videos\low\Normal\20231116_210107000_iOS.MOV
 14.46760521,7.550760326,3.884593046,-6.84799,18.46,5.93,28.65,-59.52,low,normal,project_videos\low\Normal\20231116_210110000_iOS.MOV
 -16.8205,9.964459713,-4.91223,-6.68289,-26.62,-7.83,-31.85,53.83,low,normal,project_videos\low\Normal\20231116_210113000_iOS.MOV
 -8.28293,5.693202849,0.906258,-3.5683,-10.63,-6.38,-35.04,-75.88,low,pocket,project_videos\low\Pocket\20231116_210028000_iOS.MOV
-5.052151492,3.611693034,0.1271422239,-1.6894,-1,-1,37.02,-84.66,low,vertical,project_videos\low\Vertical\20231116_210019000_iOS.MOV
