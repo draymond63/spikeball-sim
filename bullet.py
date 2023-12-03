@@ -5,10 +5,10 @@ from PIL import Image
 from scipy.optimize import minimize, LinearConstraint
 from time import sleep
 from tqdm import tqdm
-
+import sys
 
 np.seterr(invalid='raise')
-NET_RADIUS = 0.4 # m
+NET_RADIUS = 0.42 # m
 BALL_RADIUS = 0.04445 # m
 NET_MODEL = "net.obj"
 NET_EDGE_NODES = 520
@@ -43,7 +43,7 @@ class SpikeBallSimulator:
         self.update_net(*net_params, **net_kwargs)
         self.init_state = p.saveState()
 
-    def update_net(self, net_mu: float, net_lambda: float, net_friction: float = 0.5):
+    def update_net(self, mass=0.1, scale=1):
         if self.init_state is not None:
             p.restoreState(self.init_state)
         if self.net is not None:
@@ -53,15 +53,10 @@ class SpikeBallSimulator:
             NET_MODEL,
             basePosition=[-0.5, 0.5, 0], # Center of the net is not at the origin
             baseOrientation=p.getQuaternionFromEuler([np.pi/2, 0, 0]),
-            scale=0.0005, # Model has a diameter of 1828.8. That is 6ft in mm, but we need to scale to meters
-            mass=0.1,
-            useNeoHookean=True,
-            NeoHookeanMu=net_mu,
-            NeoHookeanLambda=net_lambda,
-            NeoHookeanDamping=0.01,
+            scale=0.0005*scale, # Model has a diameter of 1828.8. That is 6ft in mm, but we need to scale to meters
+            mass=mass,
             useSelfCollision=1,
-            frictionCoeff=net_friction,
-            collisionMargin=self.contact_margin
+            collisionMargin=self.contact_margin,
         )
         # Fix rim
         for nodeIndex in range(NET_EDGE_NODES):
@@ -73,9 +68,9 @@ class SpikeBallSimulator:
         contact_height = BALL_RADIUS + self.contact_margin/2
         # Start ball from higher up if it's a demo, but so that it contacts the net at the same point
         if demo:
-            raise NotImplementedError("Demo mode is not yet implemented")
-            contact_height *= 3*vy
-            rim_contact_dist *= 1.5*vx
+            p.setGravity(0, 0, 0)
+            contact_height += vy/40
+            rim_contact_dist += vx/40
         p.resetBasePositionAndOrientation(self.ball, [NET_RADIUS - rim_contact_dist, 0, contact_height], [0, 0, 0, 1])
         p.resetBaseVelocity(self.ball, linearVelocity=[vx, 0, -vy], angularVelocity=[0, 0, 0])
 
@@ -138,40 +133,40 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     assert input_states.shape == output_states.shape
     assert len(input_states.shape) == 2
 
-    current_mu, current_lambda = 1050, 5
-    sim = SpikeBallSimulator(current_mu, current_lambda, plot=False)
+    current_mass, current_scale = 0.1, 1
+    sim = SpikeBallSimulator(current_mass, current_scale, plot=False)
     status = "Starting optimization..."
 
     pbar = tqdm()
     def objective(x):
-        net_mu, net_lambda = x
-        nonlocal current_lambda, current_mu, sim, status
+        mass, net_scale = x
+        nonlocal current_scale, current_mass, sim, status
         pbar.set_description(status + " GEN ")
-        if net_mu != current_mu or net_lambda != current_lambda:
+        if mass != current_mass or net_scale != current_scale:
             p.disconnect()
-            sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
-            current_mu, current_lambda = net_mu, net_lambda
+            sim = SpikeBallSimulator(mass, net_scale, plot=False)
+            current_mass, current_scale = mass, net_scale
         pbar.set_description(status + " SIM ")
         try:
             sim_out = np.array([sim.get_output_state(*input_state) for input_state in input_states])
         except Exception as e:
-            raise Exception(f"Error in simulation with mu={net_mu}, lambda={x[1]}") from e
+            raise Exception(f"Error in simulation with mu={mass}, lambda={x[1]}") from e
         error = sim_error(output_states, sim_out)
-        status = f"mu={net_mu:.3f}, lambda={net_lambda:.3f} -> error={error:.3f}"
+        status = f"mass={mass:.3f}, scale={net_scale:.3f} -> error={error:.3f}"
         pbar.set_description(status + " FIN ")
         pbar.update()
         return error
 
-    x0 = np.array([current_mu, current_lambda])
+    x0 = np.array([current_mass, current_scale])
     res = minimize(objective, x0, method='nelder-mead', options={'xatol': 1e-8, 'disp': True})
     pbar.close()
     print(res)
     return res.x
 
 
-def optimize_pocket_shot(net_mu: float, net_lambda: float, max_v=15, opt_func='max_xdist'):
+def optimize_pocket_shot(net_mass: float, net_scale: float, max_v=15, opt_func='max_xdist'):
     # Find the optimal pocket shot, i.e. the shot rebounds at the shallowest angle possible while still clearing the net
-    sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
+    sim = SpikeBallSimulator(net_mass, net_scale, plot=False)
     pbar = tqdm()
 
     def max_xdist(x, vx_out, vy_out):
@@ -222,16 +217,19 @@ if __name__ == "__main__":
     # vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,type_out,path
     df = get_data()
     # Get one of each type of shot (i.e. in=low, out=pocket)
-    df = df.groupby(['type_in', 'type_out']).head(1) # Drops time from 88s/it to 23s/it
+    df = df.groupby(['type_in', 'type_out']).head(2) # Drops time from 97s/it to 14s/it
     input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
     output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
-    net_mu, net_lambda = optimize_net_sim(input_states, output_states)
-    print(net_mu, net_lambda)
+    with open('log.txt', 'w') as f:
+        sys.stdout = f
+        sys.stderr = f
+        net_mass, net_scale = optimize_net_sim(input_states, output_states)
+    print(net_mass, net_scale)
 
-    # state = input_states[0]
+    # state = input_states[34]
     # print(df.head())
     # print(state)
-    # sim = SpikeBallSimulator(net_mu=5, net_lambda=5, plot=True, trimetric=False)
+    # sim = SpikeBallSimulator(plot=True, trimetric=False)
     # sim.run(*state, save='test.gif', demo=True)
 
     # print(sim.get_output_state(*state))
@@ -239,4 +237,4 @@ if __name__ == "__main__":
     #     print(state, end=" -> ")
     #     print(sim.get_output_state(*state))
 
-    # optimize_pocket_shot(net_mu=1050, net_lambda=5, opt_func='max_xdist')
+    # optimize_pocket_shot(mass=1050, net_scale=5, opt_func='max_xdist')
