@@ -136,21 +136,30 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     assert input_states.shape == output_states.shape
     assert len(input_states.shape) == 2
 
+    current_mu, current_lambda = 1050, 5
+    sim = SpikeBallSimulator(current_mu, current_lambda, plot=False)
+    status = "Starting optimization..."
+
     pbar = tqdm()
     def objective(x):
         net_mu, net_lambda = x
-        pbar.update()
-        pbar.set_description(f"mu={net_mu:.3f}, lambda={net_lambda:.3f}")
-        sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
+        nonlocal current_lambda, current_mu, sim, status
+        pbar.set_description(status + " GEN")
+        if net_mu != current_mu or net_lambda != current_lambda:
+            sim = SpikeBallSimulator(net_mu, net_lambda, plot=False)
+            current_mu, current_lambda = net_mu, net_lambda
+        pbar.set_description(status + " SIM")
         try:
-            sim_out = np.array([sim.get_output_state(*input_state, raise_on_error=False) for input_state in input_states])
+            sim_out = np.array([sim.get_output_state(*input_state) for input_state in input_states])
         except Exception as e:
             raise Exception(f"Error in simulation with mu={net_mu}, lambda={x[1]}") from e
-        return sim_error(output_states, sim_out)
+        error = sim_error(output_states, sim_out)
+        status = f"mu={net_mu:.3f}, lambda={net_lambda:.3f} -> error={error:.3f}"
+        pbar.set_description(status + " FIN")
+        pbar.update()
+        return error
 
-    init_mu = 1e3
-    init_lambda = 5
-    x0 = np.array([init_mu, init_lambda])
+    x0 = np.array([current_mu, current_lambda])
     res = minimize(objective, x0, method='nelder-mead', options={'xatol': 1e-8, 'disp': True})
     pbar.close()
     print(res)
@@ -198,24 +207,11 @@ def optimize_pocket_shot(net_mu: float, net_lambda: float, max_v=15, opt_func='m
 
 
 if __name__ == "__main__":
-    # rim_dist_range = np.linspace(4*BALL_RADIUS, NET_RADIUS, 10)
-    # in_vx_range = np.linspace(0.1, 4, 10)
-    # in_vy_range = np.linspace(0.1, 4, 10)
-    # input_states = np.vstack([rim_dist_range, in_vx_range, in_vy_range]).T
-    # output_states = np.array([ # Simulated with net_mu=1050, net_lambda=10
-    #     [0.17177305, -0.0119, -0.2394],
-    #     [0.16058951, 0.1142, -0.84351],
-    #     [0.15880679, 0.0138, -1.36432],
-    #     [0.15881482, 0.1067, -1.82267],
-    #     [0.14964238, 0.2735, -2.30739],
-    #     [0.15231321, 0.2827, -2.79035],
-    #     [0.17175946, 0.0828, -3.14165],
-    #     [0.17279976, 0.2647, -3.62030],
-    #     [0.17296509, 0.6257, -3.96120],
-    #     [0.28664461, 0.0848, -3.71219],
-    # ])
-    # net_mu, net_lambda = optimize_net_sim(input_states, output_states)
-    # print(net_mu, net_lambda)
+    df = pd.read_csv('ball_tracking.csv')
+    input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
+    output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
+    net_mu, net_lambda = optimize_net_sim(input_states, output_states)
+    print(net_mu, net_lambda)
 
     # xdist optimized
     # state = [1.334e-01, 3.067e+00, 2.918e+0] # Best 'pocket' at max 5 m/s
@@ -227,10 +223,10 @@ if __name__ == "__main__":
     # input_angle = np.arctan2(-state[2], -state[1])
     # print(f"Input speed: {input_speed:.3f} m/s, angle: {input_angle*180/np.pi:.3f} deg")
     # sim = SpikeBallSimulator(net_mu=1050, net_lambda=5, plot=True, trimetric=False)
-    # sim.run(*state, let_run=True)
+    # sim.run(*state, save='test.gif', demo=True)
     # print(sim.get_output_state(*state))
     # for state in input_states:
     #     print(state, end=" -> ")
     #     print(sim.get_output_state(*state))
 
-    optimize_pocket_shot(net_mu=1050, net_lambda=5, opt_func='max_xdist')
+    # optimize_pocket_shot(net_mu=1050, net_lambda=5, opt_func='max_xdist')
