@@ -1,8 +1,9 @@
 import numpy as np
 import pybullet as p
 import pandas as pd
+from functools import cache
 from PIL import Image
-from scipy.optimize import minimize, LinearConstraint
+from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
 from time import sleep
 from tqdm import tqdm
 import sys
@@ -12,11 +13,12 @@ NET_RADIUS = 0.42 # m
 BALL_RADIUS = 0.04445 # m
 NET_MODEL = "net.obj"
 NET_EDGE_NODES = 520
+GRAVITY = 9.81 # m/s^2
 # NET_NODES = 5720
 
 
 class SpikeBallSimulator:
-    def __init__(self, *net_params, max_duration=0.01, g=9.81, plot=False, trimetric=False, **net_kwargs) -> None:
+    def __init__(self, *net_params, max_duration=0.1, g=GRAVITY, plot=False, trimetric=False, **net_kwargs) -> None:
         self.step_rate = 20000
         self.max_steps = int(max_duration*self.step_rate)
         self.plot = plot
@@ -102,7 +104,9 @@ class SpikeBallSimulator:
                 break
             elif step_count > self.max_steps:
                 if not sim_started:
-                    raise Exception(f"Ball never hit net with input x={rim_contact_dist}, vx={vx}, vy={vy}")
+                    raise Exception(f"Ball never hit net with input x={rim_contact_dist}, {vx}, vy={vy}")
+                if not demo:
+                    print("\nWarning: simulation timed out")
                 break
             elif z < -3*BALL_RADIUS and not demo:
                 raise Exception(f"Ball fell through net with input x={rim_contact_dist}, vx={vx}, vy={vy}")
@@ -110,9 +114,10 @@ class SpikeBallSimulator:
             frames[0].save(save, format='GIF', append_images=frames[1:], save_all=True, duration=len(frames)/self.step_rate, loop=0)
         return np.array(ball_coords) # (step_count, 3)
 
+    @cache
     def get_output_state(self, *input_state, **kwargs) -> tuple[float, float, float]:
         """Returns the output state (rim_dist, vx_out, vy_out) of the ball given the ball coordinates"""
-        ball_coords = self.run(*input_state, **kwargs, demo=False)
+        ball_coords = self.run(*input_state, **kwargs)
         rim_dist = NET_RADIUS - ball_coords[-1, 0]
         v_vec = p.getBaseVelocity(self.ball)[0]
         vx_out, vy_out = v_vec[0], -v_vec[2]
@@ -164,20 +169,44 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     return res.x
 
 
-def optimize_pocket_shot(net_mass: float, net_scale: float, max_v=15, opt_func='max_xdist'):
+def compute_angle(vx_out, vy_out):
+    rad = np.arctan2(-vy_out, -vx_out)
+    if rad < 0:
+        rad += 2*np.pi
+    return np.rad2deg(rad)
+
+def rebound_dist_from_rim(rim_dist, vx, vy, g=GRAVITY):
+    if vy >= 0:
+        raise ValueError("vy must be negative (upward))")
+    if vx >= 0:
+        raise ValueError("vx must be negative (rightward)")
+    vx *= -1 # Flip y velocity
+    vy *= -1 # Flip y velocity
+    x = - 2*NET_RADIUS + rim_dist
+    a = -g/2
+    b = vy
+    c = -vx
+    discriminant = b**2 - 4*a*c
+    if discriminant < 0:
+        raise ValueError("No real solution")
+    return x + (-b + np.sqrt(discriminant))/(2*a)
+
+
+def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt_func='max_xdist'):
     # Find the optimal pocket shot, i.e. the shot rebounds at the shallowest angle possible while still clearing the net
-    sim = SpikeBallSimulator(net_mass, net_scale, plot=False)
+    sim = SpikeBallSimulator(mass, scale, plot=False)
     pbar = tqdm()
 
-    def max_xdist(x, vx_out, vy_out):
+    def max_xdist(rim_dist, vx_out, vy_out):
         return vx_out # Want it to bounce as fast as possible in the negative x direction
+
+    def min_angle(rim_dist, vx_out, vy_out):
+        return compute_angle(vx_out, vy_out)
     
-    def min_angle(x, vx_out, vy_out):
-        rad = np.arctan2(-vy_out, -vx_out)
-        if rad < 0:
-            rad += 2*np.pi
-        return rad
-    
+    def max_error_margin(rim_dist, vx_out, vy_out):
+        # Minimize varability of the output state given the input state by comput
+        ...
+
     func_map = {
         'max_xdist': max_xdist,
         'min_angle': min_angle,
@@ -186,19 +215,19 @@ def optimize_pocket_shot(net_mass: float, net_scale: float, max_v=15, opt_func='
     def objective(x):
         rim_dist, vx, vy = x
         xdist_out, vx_out, vy_out = sim.get_output_state(rim_dist, vx, vy)
+        obj = func_map[opt_func](xdist_out, vx_out, vy_out)
         pbar.update()
-        pbar.set_description(f"x={rim_dist:.5f}, vx={vx:.5f}, vy={vy:.5f} -> vx_out={vx_out:.3f}, vy_out={vy_out:.3f}")
-        return func_map[opt_func](xdist_out, vx_out, vy_out)
+        pbar.set_description(f"x={rim_dist:.5f}, vx={vx:.5f}, vy={vy:.5f} -> vx_out={vx_out:.3f}, vy_out={vy_out:.3f} (obj={obj:.3f})")
+        return obj
 
-    # clear_rim_constr = {
-    #     'type': 'ineq',
-    #     'fun': lambda x: NET_RADIUS - x[0]
-    # }
+    # clear_rim_constr = NonlinearConstraint(lambda x: rebound_dist_from_rim(sim.get_output_state(*x)), 0, np.inf)
+    # rebound_constr = NonlinearConstraint(lambda x: sim.get_output_state(*x)[1], -np.inf, 0)
+    # min_outbound_constr = NonlinearConstraint(lambda x: np.linalg.norm(sim.get_output_state(*x)[1:]), 0, np.inf)
     rim_dist_constr = LinearConstraint([1, 0, 0], [2*BALL_RADIUS], [2*NET_RADIUS - 2*BALL_RADIUS], keep_feasible=True)
     vxin_constr = LinearConstraint([0, 1, 0], [0], [max_v], keep_feasible=True) # Shot must be to the right
     vyin_constr = LinearConstraint([0, 0, 1], [0], [max_v], keep_feasible=True) # Shot must be downward
     vin_constr = LinearConstraint([0, 1/np.sqrt(2), 1/np.sqrt(2)], [0], [max_v], keep_feasible=True)
-    res = minimize(objective, [3*BALL_RADIUS, 3, 3], method='trust-constr', constraints=[rim_dist_constr, vxin_constr, vyin_constr, vin_constr], options={'disp': True})
+    res = minimize(objective, [3*BALL_RADIUS, 10, 10], method='trust-constr', constraints=[rim_dist_constr, vxin_constr, vyin_constr, vin_constr], options={'disp': True})
     pbar.close()
     print(res)
     return res.x
@@ -244,8 +273,7 @@ def get_pockets_by_shot(df):
 
 if __name__ == "__main__":
     # vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,type_out,path
-    df = get_data()
-    # Get one of each type of shot (i.e. in=low, out=pocket)
+    # df = get_data()
     # df = df.groupby(['type_in', 'type_out']).head(2) # Drops time from 97s/it to 14s/it
     # input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
     # output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
@@ -256,14 +284,10 @@ if __name__ == "__main__":
     # print(net_mass, net_scale)
 
     # state = input_states[34]
-    # print(df.head())
-    # print(state)
-    # sim = SpikeBallSimulator(plot=True, trimetric=True)
-    # sim.run(*state, save='test.gif', demo=True)
+    # state = [0.13716, 3.72548, 3.57745]
+    # sim = SpikeBallSimulator(mass=0.108, scale=0.925, max_duration=0.1, plot=False, trimetric=True)
+    # sim.run(*state, demo=True)
+    # optimize_pocket_shot(mass=0.108, scale=0.925, opt_func='max_xdist')
+    optimize_pocket_shot(mass=0.108, scale=0.925, max_v=43, opt_func='min_angle')
 
-    # print(sim.get_output_state(*state))
-    # for state in input_states:
-    #     print(state, end=" -> ")
-    #     print(sim.get_output_state(*state))
-
-    # optimize_pocket_shot(mass=1050, net_scale=5, opt_func='max_xdist')
+    # print(rebound_dist_from_rim(0.5, -10, -10))
