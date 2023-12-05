@@ -21,21 +21,21 @@ def rebound_dist_from_rim(rim_dist, vx, vy, g=GRAVITY, raise_on_invalid=True):
         if raise_on_invalid:
             raise ValueError("vy must be negative (upward))")
         else:
-            return np.inf
+            return -np.inf
     if vx >= 0:
         if raise_on_invalid:
             raise ValueError("vx must be negative (rightward)")
         else:
-            return np.inf
+            return -np.inf
     x = - 2*NET_RADIUS + rim_dist
     t = get_air_time(vy, g)
     return x - vx*t - 2*NET_RADIUS
 
 
-def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt_func='max_xdist'):
+def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, popsize=15, maxiter=2, opt_func='max_xdist'):
     # Find the optimal pocket shot, i.e. the shot rebounds at the shallowest angle possible while still clearing the net
     sim = SpikeBallSimulator(mass, scale, plot=False)
-    pbar = tqdm()
+    pbar = tqdm(total=(maxiter + 1) * popsize * 214)
 
     def max_xdist(rim_dist, vx_out, vy_out):
         return vx_out # Want it to bounce as fast as possible in the negative x direction
@@ -70,18 +70,28 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt
 
     # rebound_constr = NonlinearConstraint(lambda x: sim.get_output_state(*x)[1], -np.inf, 0)
     # min_outbound_constr = NonlinearConstraint(lambda x: np.linalg.norm(sim.get_output_state(*x)[1:]), 0, np.inf)
-    if opt_func == 'min_air_time':
-        clear_rim_constr = NonlinearConstraint(lambda x: rebound_dist_from_rim(sim.get_output_state(*x), raise_on_invalid=False), 0, np.inf)
     rim_dist_bounds = [2*BALL_RADIUS, 2*NET_RADIUS - 2*BALL_RADIUS]
     vx_bounds = [0, max_v]
     vy_bounds = [0, max_v]
     vin_constr = LinearConstraint([0, 1/np.sqrt(2), 1/np.sqrt(2)], [0], [max_v], keep_feasible=True)
-    res = differential_evolution(objective, bounds=[rim_dist_bounds, vx_bounds, vy_bounds], constraints=[vin_constr])
+    constraints = [vin_constr]
+    if opt_func == 'min_air_time':
+        clear_rim_constr = NonlinearConstraint(lambda x: rebound_dist_from_rim(*sim.get_output_state(*x), raise_on_invalid=False), 0, np.inf)
+        constraints.append(clear_rim_constr)
+    res = differential_evolution(
+        objective,
+        bounds=[rim_dist_bounds, vx_bounds, vy_bounds],
+        constraints=constraints,
+        maxiter=maxiter,
+        popsize=popsize,
+    )
     pbar.close()
     print(res)
     return res.x
 
 
 if __name__ == "__main__":
-    optimize_pocket_shot(mass=0.108, scale=0.925, max_v=40, opt_func='min_angle')
-    
+    with open('air_time.log', 'w+') as f:
+        sys.stdout = f
+        sys.stderr = f
+        optimize_pocket_shot(mass=0.108, scale=0.925, opt_func='min_air_time')

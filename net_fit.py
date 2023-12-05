@@ -101,6 +101,10 @@ if __name__ == "__main__":
         sys.stdout = f
         sys.stderr = f
         net_mass, net_scale = optimize_net_sim(input_states, output_states)
-        print(f"Optimal net parameters: mass={net_mass}, scale={net_scale}")
+        print(f"\nOptimal net parameters: mass={net_mass}, scale={net_scale}")
+        print("\nOptimizing X-dist...")
         optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='max_xdist')
+        print("\nOptimizing angle...")
         optimize_pocket_shot(mass=net_mass, scale=net_scale, max_v=40, opt_func='min_angle')
+        print("\nOptimizing air time...")
+        optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='min_air_time')
