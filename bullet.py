@@ -3,7 +3,7 @@ import pybullet as p
 import pandas as pd
 from functools import cache
 from PIL import Image
-from scipy.optimize import minimize, LinearConstraint, NonlinearConstraint
+from scipy.optimize import minimize, differential_evolution, LinearConstraint, NonlinearConstraint
 from time import sleep
 from tqdm import tqdm
 import sys
@@ -175,21 +175,24 @@ def compute_angle(vx_out, vy_out):
         rad += 2*np.pi
     return np.rad2deg(rad)
 
-def rebound_dist_from_rim(rim_dist, vx, vy, g=GRAVITY):
+def get_air_time(vy_out, g=GRAVITY):
+    return -vy_out/g
+
+def rebound_dist_from_rim(rim_dist, vx, vy, g=GRAVITY, raise_on_invalid=True):
+    # Measured from closest point on rim, positive is away
     if vy >= 0:
-        raise ValueError("vy must be negative (upward))")
+        if raise_on_invalid:
+            raise ValueError("vy must be negative (upward))")
+        else:
+            return np.inf
     if vx >= 0:
-        raise ValueError("vx must be negative (rightward)")
-    vx *= -1 # Flip y velocity
-    vy *= -1 # Flip y velocity
+        if raise_on_invalid:
+            raise ValueError("vx must be negative (rightward)")
+        else:
+            return np.inf
     x = - 2*NET_RADIUS + rim_dist
-    a = -g/2
-    b = vy
-    c = -vx
-    discriminant = b**2 - 4*a*c
-    if discriminant < 0:
-        raise ValueError("No real solution")
-    return x + (-b + np.sqrt(discriminant))/(2*a)
+    t = get_air_time(vy, g)
+    return x - vx*t - 2*NET_RADIUS
 
 
 def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt_func='max_xdist'):
@@ -203,13 +206,21 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt
     def min_angle(rim_dist, vx_out, vy_out):
         return compute_angle(vx_out, vy_out)
     
-    def max_error_margin(rim_dist, vx_out, vy_out):
+    def min_air_time(rim_dist, vx_out, vy_out):
+        air_time = get_air_time(vy_out)
+        if air_time < 0: # TODO: Necessary?
+            return np.inf
+        return air_time
+
+    def max_tolerance(rim_dist, vx_out, vy_out):
         # Minimize varability of the output state given the input state by comput
-        ...
+        raise NotImplementedError()
 
     func_map = {
         'max_xdist': max_xdist,
         'min_angle': min_angle,
+        'min_air_time': min_air_time,
+        'max_tolerance': max_tolerance,
     }
 
     def objective(x):
@@ -220,14 +231,15 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt
         pbar.set_description(f"x={rim_dist:.5f}, vx={vx:.5f}, vy={vy:.5f} -> vx_out={vx_out:.3f}, vy_out={vy_out:.3f} (obj={obj:.3f})")
         return obj
 
-    # clear_rim_constr = NonlinearConstraint(lambda x: rebound_dist_from_rim(sim.get_output_state(*x)), 0, np.inf)
     # rebound_constr = NonlinearConstraint(lambda x: sim.get_output_state(*x)[1], -np.inf, 0)
     # min_outbound_constr = NonlinearConstraint(lambda x: np.linalg.norm(sim.get_output_state(*x)[1:]), 0, np.inf)
-    rim_dist_constr = LinearConstraint([1, 0, 0], [2*BALL_RADIUS], [2*NET_RADIUS - 2*BALL_RADIUS], keep_feasible=True)
-    vxin_constr = LinearConstraint([0, 1, 0], [0], [max_v], keep_feasible=True) # Shot must be to the right
-    vyin_constr = LinearConstraint([0, 0, 1], [0], [max_v], keep_feasible=True) # Shot must be downward
+    if opt_func == 'min_air_time':
+        clear_rim_constr = NonlinearConstraint(lambda x: rebound_dist_from_rim(sim.get_output_state(*x), raise_on_invalid=False), 0, np.inf)
+    rim_dist_bounds = [2*BALL_RADIUS, 2*NET_RADIUS - 2*BALL_RADIUS]
+    vx_bounds = [0, max_v]
+    vy_bounds = [0, max_v]
     vin_constr = LinearConstraint([0, 1/np.sqrt(2), 1/np.sqrt(2)], [0], [max_v], keep_feasible=True)
-    res = minimize(objective, [3*BALL_RADIUS, 10, 10], method='trust-constr', constraints=[rim_dist_constr, vxin_constr, vyin_constr, vin_constr], options={'disp': True})
+    res = differential_evolution(objective, bounds=[rim_dist_bounds, vx_bounds, vy_bounds], constraints=[vin_constr])
     pbar.close()
     print(res)
     return res.x
@@ -235,8 +247,9 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, opt
 
 def get_data(path='ball_tracking.csv'):
     df = pd.read_csv(path)
-    df['vx_in'] = np.abs(df['vx_in'])
-    df['vx_in'] = np.abs(df['vx_in'])
+    vx_sign = np.sign(df['vx_in'])
+    df['vx_in'] *= vx_sign # Pretend all shots are traveling rightward
+    df['vx_out'] *= vx_sign
     df['rim_dist_in'] = np.abs(df['rim_dist_in'])/100
     df['rim_dist_out'] = np.abs(df['rim_dist_out'])/100
     return df
@@ -281,13 +294,13 @@ if __name__ == "__main__":
     #     sys.stdout = f
     #     sys.stderr = f
     #     net_mass, net_scale = optimize_net_sim(input_states, output_states)
-    # print(net_mass, net_scale)
+    #     print(net_mass, net_scale)
+    #     optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='max_xdist')
+    #     optimize_pocket_shot(mass=net_mass, scale=net_scale, max_v=40, opt_func='min_angle')
 
     # state = input_states[34]
     # state = [0.13716, 3.72548, 3.57745]
     # sim = SpikeBallSimulator(mass=0.108, scale=0.925, max_duration=0.1, plot=False, trimetric=True)
     # sim.run(*state, demo=True)
-    # optimize_pocket_shot(mass=0.108, scale=0.925, opt_func='max_xdist')
-    optimize_pocket_shot(mass=0.108, scale=0.925, max_v=43, opt_func='min_angle')
 
-    # print(rebound_dist_from_rim(0.5, -10, -10))
+    optimize_pocket_shot(mass=0.108, scale=0.925, max_v=40, opt_func='min_angle')
