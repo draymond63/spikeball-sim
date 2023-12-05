@@ -16,7 +16,7 @@ NET_EDGE_NODES = 520
 
 
 class SpikeBallSimulator:
-    def __init__(self, *net_params, max_duration=0.1, g=9.81, plot=False, trimetric=False, **net_kwargs) -> None:
+    def __init__(self, *net_params, max_duration=0.01, g=9.81, plot=False, trimetric=False, **net_kwargs) -> None:
         self.step_rate = 20000
         self.max_steps = int(max_duration*self.step_rate)
         self.plot = plot
@@ -24,7 +24,7 @@ class SpikeBallSimulator:
         p.setTimeStep(1/self.step_rate)
         # Camera settings
         cameraTargetPosition = [0, 0, 0]  # x, y, z
-        cameraDistance = 1
+        cameraDistance = 0.7
         cameraYaw = 0
         cameraPitch = -30 if trimetric else 0
         p.resetDebugVisualizerCamera(cameraDistance, cameraYaw, cameraPitch, cameraTargetPosition)
@@ -68,9 +68,9 @@ class SpikeBallSimulator:
         contact_height = BALL_RADIUS + self.contact_margin/2
         # Start ball from higher up if it's a demo, but so that it contacts the net at the same point
         if demo:
-            p.setGravity(0, 0, 0)
-            contact_height += vy/40
-            rim_contact_dist += vx/40
+            # p.setGravity(0, 0, 0)
+            contact_height += vy/70
+            rim_contact_dist += vx/70
         p.resetBasePositionAndOrientation(self.ball, [NET_RADIUS - rim_contact_dist, 0, contact_height], [0, 0, 0, 1])
         p.resetBaseVelocity(self.ball, linearVelocity=[vx, 0, -vy], angularVelocity=[0, 0, 0])
 
@@ -107,7 +107,7 @@ class SpikeBallSimulator:
             elif z < -3*BALL_RADIUS and not demo:
                 raise Exception(f"Ball fell through net with input x={rim_contact_dist}, vx={vx}, vy={vy}")
         if save:
-            frames[0].save(save, format='GIF', append_images=frames[1:], save_all=True, duration=len(frames)/self.step_rate/10, loop=0)
+            frames[0].save(save, format='GIF', append_images=frames[1:], save_all=True, duration=len(frames)/self.step_rate, loop=0)
         return np.array(ball_coords) # (step_count, 3)
 
     def get_output_state(self, *input_state, **kwargs) -> tuple[float, float, float]:
@@ -212,24 +212,53 @@ def get_data(path='ball_tracking.csv'):
     df['rim_dist_out'] = np.abs(df['rim_dist_out'])/100
     return df
 
+def get_shot_types(df):
+    df = df.filter(['type_in', 'type_out'])
+    df = df.groupby(['type_in', 'type_out']).size().reset_index(name='counts')
+    df = df.pivot(index='type_in', columns='type_out', values='counts')
+    df = df.drop('vertical', axis=1)
+    df = df.div(df.sum(axis=1), axis=0)
+    df = df.fillna(0)
+    df = df.reindex(['low', 'medium', 'high'])
+    df = df.round(2)
+    return df
+
+def get_pockets_by_shot(df):
+    df = df.filter(['type_in', 'vx_in', 'vy_in', 'type_out'])
+    # Drop vertical shots
+    df = df[df['type_out'] != 'vertical']
+    df['speed'] = np.linalg.norm(df[['vx_in', 'vy_in']], axis=1)
+    median_speed = df['speed'].median()
+    df['speed'] = df['speed'].apply(lambda x: 'slow' if x < median_speed else 'fast')
+    # The final result should be a table where the columns are the speed types, the rows are the shot types, and the values are the percentage of pocket shots
+    df = df.groupby(['type_in', 'speed', 'type_out']).size().reset_index(name='counts')
+    df = df.pivot(index=['type_in', 'speed'], columns='type_out', values='counts')
+    df = df.fillna(0)
+    df = df.div(df.sum(axis=1), axis=0)
+    df = df.round(2)
+    df = df.reset_index()
+    df.drop('normal', axis=1, inplace=True)
+    df = df.pivot(index='type_in', columns='speed', values='pocket')
+    return df
+
 
 if __name__ == "__main__":
     # vx_in,vy_in,vx_out,vy_out,rim_dist_in,rim_dist_out,angle_in,angle_out,type_in,type_out,path
     df = get_data()
     # Get one of each type of shot (i.e. in=low, out=pocket)
-    df = df.groupby(['type_in', 'type_out']).head(2) # Drops time from 97s/it to 14s/it
-    input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
-    output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
-    with open('log.txt', 'w') as f:
-        sys.stdout = f
-        sys.stderr = f
-        net_mass, net_scale = optimize_net_sim(input_states, output_states)
-    print(net_mass, net_scale)
+    # df = df.groupby(['type_in', 'type_out']).head(2) # Drops time from 97s/it to 14s/it
+    # input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
+    # output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
+    # with open('log.txt', 'w+') as f:
+    #     sys.stdout = f
+    #     sys.stderr = f
+    #     net_mass, net_scale = optimize_net_sim(input_states, output_states)
+    # print(net_mass, net_scale)
 
     # state = input_states[34]
     # print(df.head())
     # print(state)
-    # sim = SpikeBallSimulator(plot=True, trimetric=False)
+    # sim = SpikeBallSimulator(plot=True, trimetric=True)
     # sim.run(*state, save='test.gif', demo=True)
 
     # print(sim.get_output_state(*state))
