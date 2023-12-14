@@ -9,13 +9,13 @@ from bullet import SpikeBallSimulator
 from shot_optimize import optimize_pocket_shot
 
 
-def sim_error(correct_out: np.ndarray, sim_out: np.ndarray) -> float:
-    """Returns the error between the correct output and the simulated output"""
-    assert len(correct_out.shape) <= 2
-    assert correct_out.shape == sim_out.shape
-    return np.sum(np.linalg.norm(correct_out - sim_out, axis=-1))/len(correct_out)
-
-
+def optimize_net(*args, samples_per_type=5, **kwargs):
+    df = get_data(*args, **kwargs)
+    df = df.groupby(['type_in', 'type_out']).head(samples_per_type)
+    print(df)
+    input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
+    output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
+    return optimize_net_sim(input_states, output_states)
 
 def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     """Finds the optimal net parameters to match the output states given the input states"""
@@ -51,6 +51,12 @@ def optimize_net_sim(input_states: np.ndarray, output_states: np.ndarray):
     pbar.close()
     print(res)
     return res.x
+
+def sim_error(correct_out: np.ndarray, sim_out: np.ndarray) -> float:
+    """Returns the error between the correct output and the simulated output"""
+    assert len(correct_out.shape) <= 2
+    assert correct_out.shape == sim_out.shape
+    return np.sum(np.linalg.norm(correct_out - sim_out, axis=-1))/len(correct_out)
 
 
 def get_data(path='ball_tracking.csv'):
@@ -93,18 +99,23 @@ def get_pockets_by_shot(df):
 
 
 if __name__ == "__main__":
-    df = get_data()
-    df = df.groupby(['type_in', 'type_out']).head(2) # Drops time from 97s/it to 14s/it
-    input_states = df[['rim_dist_in', 'vx_in', 'vy_in']].to_numpy()
-    output_states = df[['rim_dist_out', 'vx_out', 'vy_out']].to_numpy()
-    with open('log.txt', 'w+') as f:
+    with open('full.log', 'w+') as f:
         sys.stdout = f
         sys.stderr = f
-        net_mass, net_scale = optimize_net_sim(input_states, output_states)
+        net_mass, net_scale = optimize_net()
         print(f"\nOptimal net parameters: mass={net_mass}, scale={net_scale}")
-        print("\nOptimizing X-dist...")
-        optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='max_xdist')
-        print("\nOptimizing angle...")
-        optimize_pocket_shot(mass=net_mass, scale=net_scale, max_v=40, opt_func='min_angle')
-        print("\nOptimizing air time...")
-        optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='min_air_time')
+        try:
+            print("\nOptimizing air time...")
+            optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='min_air_time')
+        except Exception as e:
+            print(e)
+        try:
+            print("\nOptimizing X-dist...")
+            optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='max_xdist')
+        except Exception as e:
+            print(e)
+        try:
+            print("\nOptimizing angle...")
+            optimize_pocket_shot(mass=net_mass, scale=net_scale, opt_func='min_angle')
+        except Exception as e:
+            print(e)
