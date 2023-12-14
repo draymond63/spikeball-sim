@@ -65,10 +65,10 @@ class SpikeBallSimulator:
         p.restoreState(self.init_state)
         contact_height = BALL_RADIUS + self.contact_margin/2
         # Start ball from higher up if it's a demo, but so that it contacts the net at the same point
-        # if demo:
+        if demo:
             # p.setGravity(0, 0, 0)
-            # contact_height += vy/70
-            # rim_contact_dist += vx/70
+            contact_height += vy/140
+            rim_contact_dist += vx/140
         p.resetBasePositionAndOrientation(self.ball, [NET_RADIUS - rim_contact_dist, 0, contact_height], [0, 0, 0, 1])
         p.resetBaseVelocity(self.ball, linearVelocity=[vx, 0, -vy], angularVelocity=[0, 0, 0])
 
@@ -125,9 +125,14 @@ class SpikeBallSimulator:
 
 if __name__ == "__main__":
     # state = [0.11670, 14.38003/4, 39.53506/4] # Shallowest
-    # state = [0.11899, 14.89772, 39.19436] # Furthest
-    # a = 2.5
-    # state = [0.11899, 14.89772/a, 39.19436/a]
-    state = [0.128, 10.757, 15.153]
-    sim = SpikeBallSimulator(mass=0.108, scale=0.925, max_duration=0.3, plot=True, trimetric=True)
+    state = [0.1899, 14.89772, 39.19436] # Furthest
+    # state = [0.128, 10.757, 15.153] # Quickest
+    # state = [0.18351, 0.11354, 11.40153] # Quicket V2
+    # state = [0.25, 20, 20] # demo
+    sim = SpikeBallSimulator(mass=0.108, scale=0.925, max_duration=0.012, plot=True, trimetric=True)
     sim.run(*state, demo=True)
+
+    # from shot_optimize import get_air_time, rebound_dist_from_rim
+    # x, vx, vy = sim.get_output_state(*state)
+    # print(rebound_dist_from_rim(x, vx, vy))
+    # print(get_air_time(vy))

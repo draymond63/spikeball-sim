@@ -1,9 +1,11 @@
+import sys
 import numpy as np
 from scipy.optimize import differential_evolution, LinearConstraint, NonlinearConstraint
 from tqdm import tqdm
-import sys
 
 from bullet import GRAVITY, BALL_RADIUS, NET_RADIUS, SpikeBallSimulator
+
+RIM_DIST_BOUNDS = [2*BALL_RADIUS, 2*NET_RADIUS - 2*BALL_RADIUS]
 
 
 def compute_angle(vx_out, vy_out):
@@ -70,7 +72,6 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, pop
 
     # rebound_constr = NonlinearConstraint(lambda x: sim.get_output_state(*x)[1], -np.inf, 0)
     # min_outbound_constr = NonlinearConstraint(lambda x: np.linalg.norm(sim.get_output_state(*x)[1:]), 0, np.inf)
-    rim_dist_bounds = [2*BALL_RADIUS, 2*NET_RADIUS - 2*BALL_RADIUS]
     vx_bounds = [0, max_v]
     vy_bounds = [0, max_v]
     vin_constr = LinearConstraint([0, 1/np.sqrt(2), 1/np.sqrt(2)], [0], [max_v], keep_feasible=True)
@@ -80,7 +81,7 @@ def optimize_pocket_shot(mass: float, scale: float, max_v=22.81563379224826, pop
         constraints.append(clear_rim_constr)
     res = differential_evolution(
         objective,
-        bounds=[rim_dist_bounds, vx_bounds, vy_bounds],
+        bounds=[RIM_DIST_BOUNDS, vx_bounds, vy_bounds],
         constraints=constraints,
         maxiter=maxiter,
         popsize=popsize,
